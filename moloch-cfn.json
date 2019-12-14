@@ -81,7 +81,7 @@
         }
     },
     "Resources": {
-        "SuricataInstance": {
+        "Instance": {
             "Type": "AWS::EC2::Instance",
             "Metadata": {
                 "AWS::CloudFormation::Init": {
@@ -134,7 +134,8 @@
                                 "libyaml-devel": [],
                                 "perl-JSON": [],
                                 "perl-libwww-perl": [],
-                                "perl-LWP-Protocol-https": []
+                                "perl-LWP-Protocol-https": [],
+                                "crudini": []
                             }
                         },
                         "files": {
@@ -159,6 +160,21 @@
                             },
                             "3-configure-moloch": {
                                 "command": "/data//moloch/bin/Configure < /data/moloch/Configure-answers"
+                            },
+                            "3.1-add-plugins": {
+                                "command": "crudini --set /data/moloch/etc/config.ini default plugins suricata.so"
+                            },
+                            "3.2-add-suricata-alert-file": {
+                                "command": "crudini --set /data/moloch/etc/config.ini default suricataAlertFile /var/log/suricata/eve.json"
+                            },
+                            "3.3-add-bpf": {
+                                "command": "crudini --set /data/moloch/etc/config.ini default bpf \"udp port 4789\""
+                            },
+                            "3.4-delete-drop-user": {
+                                "command": "crudini --del /data/moloch/etc/config.ini default dropUser"
+                            },
+                            "3.5-delete-drop-group": {
+                                "command": "crudini --del /data/moloch/etc/config.ini default dropGroup"
                             },
                             "4-start-es": {
                                 "command": "systemctl start elasticsearch.service; sleep 20"
@@ -220,7 +236,7 @@
                                             {
                                                 "Ref": "AWS::StackName"
                                             },
-                                            "--resource SuricataInstance",
+                                            "--resource Instance",
                                             "--region",
                                             {
                                                 "Ref": "AWS::Region"
@@ -241,7 +257,7 @@
                                             {
                                                 "Ref": "AWS::Region"
                                             },
-                                            "--resource SuricataInstance"
+                                            "--resource Instance"
                                         ]
                                     ]
                                 }
@@ -291,11 +307,11 @@
     "Outputs": {
         "InstanceId": {
             "Description": "Instance ID",
-            "Value": { "Ref": "SuricataInstance" }
+            "Value": { "Ref": "Instance" }
         },
         "PrivateIp": {
             "Description": "Private IP Address",
-            "Value": { "Fn::GetAtt":[ "SuricataInstance", "PrivateIp"] }
+            "Value": { "Fn::GetAtt":[ "Instance", "PrivateIp"] }
         }
     }
 }
