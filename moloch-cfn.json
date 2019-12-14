@@ -1,0 +1,301 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+
+    "Description": "Create an EC2 instance of Moloch packet capture system enhanced with Suricata",
+
+    "Parameters": {
+        "VpcId" : {
+            "Type" : "AWS::EC2::VPC::Id",
+            "Description" : "VpcId of your existing Virtual Private Cloud (VPC)",
+            "ConstraintDescription" : "must be the VPC Id of an existing Virtual Private Cloud."
+        },
+        "SubnetId" : {
+            "Type" : "AWS::EC2::Subnet::Id",
+            "Description" : "Subnet ID in your Virtual Private Cloud (VPC)",
+            "ConstraintDescription" : "must be an existing subnet in the selected VPC."
+        },
+        "InstanceType": {
+            "Type": "String",
+            "Default": "t3.medium",
+            "AllowedValues": [
+                "t3.small",
+                "t3.medium",
+                "t3.large",
+                "c5.large",
+                "c5n.large"
+            ],
+            "Description": "Enter instance type; default is t3.small"
+        },
+        "Keypair": {
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "ConstraintDescription": "must be the name of an existing EC2 KeyPair.",
+            "Description": "Key pair for the monitoring instance"
+        },
+        "LatestAmiId": {
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+        },
+        "SSHLocation": {
+            "Type": "String",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid CIDR range of the form x.x.x.x/x.",
+            "Description": "Allow SSH access from x.x.x.x/x",
+            "MaxLength": "18",
+            "MinLength": "9"
+        },
+        "VXLANLocation": {
+            "Type": "String",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid CIDR range of the form x.x.x.x/x.",
+            "Description": "Allow VXLAN traffic from x.x.x.x/x",
+            "MaxLength": "18",
+            "MinLength": "9"
+        },
+        "HTTPLocation": {
+            "Type": "String",
+            "Default": "0.0.0.0/0",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid CIDR range of the form x.x.x.x/x.",
+            "Description": "Allow HTTP access from x.x.x.x/x",
+            "MaxLength": "18",
+            "MinLength": "9"
+        },
+        "M2MPassword": {
+            "Type": "String",
+            "Description": "Enter M2M password"
+        },
+        "AdminUser": {
+            "Type": "String",
+            "Default": "admin",
+            "Description": "Enter admin username",
+            "AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+            "MinLength": "1"
+        },
+        "AdminPassword": {
+            "Type": "String",
+            "NoEcho": true,
+            "Description": "Enter admin password",
+            "MinLength": "1"
+        }
+    },
+    "Resources": {
+        "SuricataInstance": {
+            "Type": "AWS::EC2::Instance",
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "configSets": {
+                        "configure-all": [
+                            "install-epel",
+                            "install-suricata",
+                            "install-moloch"
+                        ]
+                    },
+                    "install-epel": {
+                        "commands": {
+                            "install-epel-extra": {
+                                "command": "amazon-linux-extras install epel -y"
+                            }
+                        }
+                    },
+                    "install-suricata": {
+                        "packages": {
+                            "yum": {
+                                "suricata": []
+                            }
+                        },
+                        "files": {
+                            "/etc/sysconfig/suricata": {
+                                "content": "OPTIONS=\"--set decoder.vxlan.enabled=true -k none -i eth0 --user suricata udp port 4789\""
+                            }
+                        },
+                        "commands": {
+                            "1-update-suricata": {
+                                "command": "suricata-update"
+                            },
+                            "2-enable-hourly-updates": {
+                                "command":  "echo \"10 * * * * suricata-update && suricatasc -c reload-rules\" | crontab"
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "suricata": {
+                                    "enabled": "true",
+                                    "ensureRunning" : "true",
+                                    "files": ["/etc/suricata/suricata.yaml"]
+                                }
+                            }
+                        }
+                    },
+                    "install-moloch": {
+                        "packages": {
+                            "yum": {
+                                "libyaml-devel": [],
+                                "perl-JSON": [],
+                                "perl-libwww-perl": [],
+                                "perl-LWP-Protocol-https": []
+                            }
+                        },
+                        "files": {
+                            "/data/moloch/Configure-answers": {
+                                "content": { "Fn::Join": [ "\n", [
+                                    "eth0",
+                                    "yes",
+                                    { "Ref": "M2MPassword"},
+                                    "yes"
+                                ] ] } 
+                            }
+                        },
+                        "commands": {
+                            "1-install-moloch": {
+                                "command": "rpm -i https://files.molo.ch/moloch-master.centos7.x86_64.rpm"
+                            },
+                            "1.1-replace-yum": {
+                                "command": "sed -i \"s/yum/yum -y/g\" /data/moloch/bin/Configure" 
+                            },
+                            "2-chmod-Configure": {
+                                "command": "chmod +x /data/moloch/bin/Configure"
+                            },
+                            "3-configure-moloch": {
+                                "command": "/data//moloch/bin/Configure < /data/moloch/Configure-answers"
+                            },
+                            "4-start-es": {
+                                "command": "systemctl start elasticsearch.service; sleep 20"
+                            },
+                            "5-initialise-ES": {
+                                "command": "/data/moloch/db/db.pl http://localhost:9200 init"
+                            },
+                            "6-add-admin-user":{
+                                "command": {"Fn::Join": [ " ", [
+                                    "/data/moloch/bin/moloch_add_user.sh",
+                                    {"Ref": "AdminUser"},
+                                    "\"Admin User\"",
+                                    {"Ref": "AdminPassword"},
+                                    "--admin"
+                                ] ] }
+                            }                            
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "molochcapture": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                },
+                                "molochviewer": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "CreationPolicy": {
+                "ResourceSignal": {}
+            },
+            "Properties": {
+                "ImageId": { "Ref": "LatestAmiId" },
+                "InstanceType": { "Ref": "InstanceType" },
+                "KeyName": { "Ref": "Keypair" },
+                "SubnetId": { "Ref": "SubnetId" },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "InstanceSecurityGroup"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "\n",
+                            [
+                                "#!/bin/bash -xe",
+                                "yum install -y aws-cfn-bootstrap",
+                                {
+                                    "Fn::Join": [
+                                        " ",
+                                        [
+                                            "/opt/aws/bin/cfn-init -v -c configure-all",
+                                            "--stack",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            "--resource SuricataInstance",
+                                            "--region",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                {
+                                    "Fn::Join": [
+                                        " ",
+                                        [
+                                            "/opt/aws/bin/cfn-signal",
+                                            "--stack",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            },
+                                            " --region ",
+                                            {
+                                                "Ref": "AWS::Region"
+                                            },
+                                            "--resource SuricataInstance"
+                                        ]
+                                    ]
+                                }
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+
+        "InstanceSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH access via port 22",
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": {
+                            "Ref": "SSHLocation"
+                        },
+                        "FromPort": 22,
+                        "IpProtocol": "tcp",
+                        "ToPort": 22
+                    },
+                    {
+                        "CidrIp": {
+                            "Ref": "VXLANLocation"
+                        },
+                        "FromPort": 4789,
+                        "IpProtocol": "udp",
+                        "ToPort": 4789
+                    },
+                    {
+                        "CidrIp": {
+                            "Ref": "HTTPLocation"
+                        },
+                        "FromPort": 8005,
+                        "IpProtocol": "tcp",
+                        "ToPort": 8005
+                    }
+
+                ],
+                "VpcId": { "Ref": "VpcId" }
+            }
+        }
+    },
+
+    "Outputs": {
+        "InstanceId": {
+            "Description": "Instance ID",
+            "Value": { "Ref": "SuricataInstance" }
+        },
+        "PrivateIp": {
+            "Description": "Private IP Address",
+            "Value": { "Fn::GetAtt":[ "SuricataInstance", "PrivateIp"] }
+        }
+    }
+}
