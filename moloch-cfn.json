@@ -24,7 +24,7 @@
                 "c5.large",
                 "c5n.large"
             ],
-            "Description": "Enter instance type; default is t3.small"
+            "Description": "Enter instance type"
         },
         "Keypair": {
             "Type": "AWS::EC2::KeyPair::KeyName",
@@ -170,11 +170,8 @@
                             "3.3-add-bpf": {
                                 "command": "crudini --set /data/moloch/etc/config.ini default bpf \"udp port 4789\""
                             },
-                            "3.4-delete-drop-user": {
-                                "command": "crudini --del /data/moloch/etc/config.ini default dropUser"
-                            },
-                            "3.5-delete-drop-group": {
-                                "command": "crudini --del /data/moloch/etc/config.ini default dropGroup"
+                            "3.4-chmod-suricata-logs": {
+                                "command": "chmod 755 /var/log/suricata"
                             },
                             "4-start-es": {
                                 "command": "systemctl start elasticsearch.service; sleep 20"
