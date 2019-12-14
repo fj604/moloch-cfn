@@ -53,18 +53,19 @@
             "MaxLength": "18",
             "MinLength": "9"
         },
-        "HTTPLocation": {
+        "HTTPSLocation": {
             "Type": "String",
             "Default": "0.0.0.0/0",
             "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
             "ConstraintDescription": "must be a valid CIDR range of the form x.x.x.x/x.",
-            "Description": "Allow HTTP access from x.x.x.x/x",
+            "Description": "Allow HTTPS access from x.x.x.x/x",
             "MaxLength": "18",
             "MinLength": "9"
         },
-        "M2MPassword": {
+        "S2SPassword": {
             "Type": "String",
-            "Description": "Enter M2M password"
+            "NoEcho": true,
+            "Description": "Enter S2S password, it can be random and it is not exposed to the end user"
         },
         "AdminUser": {
             "Type": "String",
@@ -89,7 +90,9 @@
                         "configure-all": [
                             "install-epel",
                             "install-suricata",
-                            "install-moloch"
+                            "install-moloch-deps",
+                            "install-moloch",
+                            "install-https-reverse-proxy"
                         ]
                     },
                     "install-epel": {
@@ -128,13 +131,22 @@
                             }
                         }
                     },
-                    "install-moloch": {
+                    "install-moloch-deps": {
                         "packages": {
                             "yum": {
                                 "libyaml-devel": [],
                                 "perl-JSON": [],
                                 "perl-libwww-perl": [],
-                                "perl-LWP-Protocol-https": [],
+                                "perl-LWP-Protocol-https": []
+                            }
+                        }
+                    },
+                    "install-moloch": {
+                        "packages": {
+                            "rpm": {
+                                "moloch": "https://files.molo.ch/moloch-master.centos7.x86_64.rpm"
+                            },
+                            "yum": {
                                 "crudini": []
                             }
                         },
@@ -143,43 +155,37 @@
                                 "content": { "Fn::Join": [ "\n", [
                                     "eth0",
                                     "yes",
-                                    { "Ref": "M2MPassword"},
+                                    { "Ref": "S2SPassword"},
                                     "yes"
                                 ] ] } 
                             }
                         },
                         "commands": {
-                            "1-install-moloch": {
-                                "command": "rpm -i https://files.molo.ch/moloch-master.centos7.x86_64.rpm"
+                            "1-remove-yum-prompt": {
+                                "command": "sed -i \"s/yum install/yum -y install/g\" /data/moloch/bin/Configure" 
                             },
-                            "1.1-replace-yum": {
-                                "command": "sed -i \"s/yum/yum -y/g\" /data/moloch/bin/Configure" 
-                            },
-                            "2-chmod-Configure": {
-                                "command": "chmod +x /data/moloch/bin/Configure"
-                            },
-                            "3-configure-moloch": {
+                            "2-configure-moloch": {
                                 "command": "/data//moloch/bin/Configure < /data/moloch/Configure-answers"
                             },
-                            "3.1-add-plugins": {
+                            "3-add-plugins": {
                                 "command": "crudini --set /data/moloch/etc/config.ini default plugins suricata.so"
                             },
-                            "3.2-add-suricata-alert-file": {
+                            "4-add-suricata-alert-file": {
                                 "command": "crudini --set /data/moloch/etc/config.ini default suricataAlertFile /var/log/suricata/eve.json"
                             },
-                            "3.3-add-bpf": {
+                            "5-add-bpf": {
                                 "command": "crudini --set /data/moloch/etc/config.ini default bpf \"udp port 4789\""
                             },
-                            "3.4-chmod-suricata-logs": {
+                            "6-chmod-suricata-logs": {
                                 "command": "chmod 755 /var/log/suricata"
                             },
-                            "4-start-es": {
+                            "7-start-es": {
                                 "command": "systemctl start elasticsearch.service; sleep 20"
                             },
-                            "5-initialise-ES": {
+                            "8-initialise-ES": {
                                 "command": "/data/moloch/db/db.pl http://localhost:9200 init"
                             },
-                            "6-add-admin-user":{
+                            "9-add-admin-user":{
                                 "command": {"Fn::Join": [ " ", [
                                     "/data/moloch/bin/moloch_add_user.sh",
                                     {"Ref": "AdminUser"},
@@ -191,6 +197,10 @@
                         },
                         "services": {
                             "sysvinit": {
+                                "elasticsearch": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                },
                                 "molochcapture": {
                                     "enabled": "true",
                                     "ensureRunning": "true"
@@ -201,7 +211,42 @@
                                 }
                             }
                         }
+                    },
+                    "install-https-reverse-proxy": {
+                        "packages": {
+                            "yum": {
+                                "httpd": [],
+                                "mod_ssl": []
+                            }
+                        },
+                        "commands": {
+                            "1-make-dummy-cert": {
+                                "cwd": "/etc/pki/tls/certs/",
+                                "command": "./make-dummy-cert localhost.crt"
+                            },
+                            "2-delete-SSLCertificateKeyFile-conf": {
+                                "command": "sed -i /SSLCertificateKeyFile/d /etc/httpd/conf.d/ssl.conf"
+                            }
+                        },
+                        "files": {
+                            "/etc/httpd/conf.d/moloch.conf": {
+                                "content": { "Fn::Join": [ "\n", [
+                                    "SSLProxyEngine On",
+                                    "ProxyPass / http://localhost:8005/ retry=0",
+                                    "ProxyPassReverse / http://localhost:8005/"
+                                ] ] } 
+                            }
+                        },
+                        "services": {
+                            "sysvinit": {
+                                "httpd": {
+                                    "enabled": "true",
+                                    "ensureRunning": "true"
+                                }
+                            }
+                        }
                     }
+
                 }
             },
             "CreationPolicy": {
@@ -288,11 +333,11 @@
                     },
                     {
                         "CidrIp": {
-                            "Ref": "HTTPLocation"
+                            "Ref": "HTTPSLocation"
                         },
-                        "FromPort": 8005,
+                        "FromPort": 443,
                         "IpProtocol": "tcp",
-                        "ToPort": 8005
+                        "ToPort": 443
                     }
 
                 ],
