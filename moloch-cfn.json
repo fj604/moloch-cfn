@@ -18,7 +18,6 @@
             "Type": "String",
             "Default": "t3.medium",
             "AllowedValues": [
-                "t3.small",
                 "t3.medium",
                 "t3.large",
                 "c5.large",
