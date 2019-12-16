@@ -351,6 +351,10 @@
         "PrivateIp": {
             "Description": "Private IP Address",
             "Value": { "Fn::GetAtt":[ "Instance", "PrivateIp"] }
+        },
+        "PublicIp": {
+            "Description": "Public IP Address",
+            "Value": { "Fn::GetAtt":[ "Instance", "PublicIp"] }
         }
     }
 }
