@@ -245,7 +245,6 @@
                             }
                         }
                     }
-
                 }
             },
             "CreationPolicy": {
@@ -312,7 +311,7 @@
         "InstanceSecurityGroup": {
             "Type": "AWS::EC2::SecurityGroup",
             "Properties": {
-                "GroupDescription": "Enable SSH access via port 22",
+                "GroupDescription": "Enable access to SSH, HTTPS and VXLAN",
                 "SecurityGroupIngress": [
                     {
                         "CidrIp": {
@@ -338,7 +337,6 @@
                         "IpProtocol": "tcp",
                         "ToPort": 443
                     }
-
                 ],
                 "VpcId": { "Ref": "VpcId" }
             }
