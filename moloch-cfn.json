@@ -166,6 +166,12 @@
                             "2-configure-moloch": {
                                 "command": "/data//moloch/bin/Configure < /data/moloch/Configure-answers"
                             },
+                            "2.1-remove-geoLite2ASN": {
+                                "command": "crudini --set /data/moloch/etc/config.ini default geoLite2ASN \"\""
+                            },
+                            "2.2-remove-geoLite2Country ": {
+                                "command": "crudini --set /data/moloch/etc/config.ini default geoLite2Country  \"\""
+                            },
                             "3-add-plugins": {
                                 "command": "crudini --set /data/moloch/etc/config.ini default plugins suricata.so"
                             },
